@@ -7,23 +7,31 @@ import java.nio.charset.StandardCharsets;
 
 public class TestMain {
     public static void main(String[] args) throws Exception{
-        String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36";
+        String agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36";
 
-        String baseRankURL = "https://baram.nexon.com/Profile/Info?character=";
+        String[] idList = {
+                "낼룸"
+        };
 
-        String encodedCharInfo = URLEncoder.encode("검귀@호동", StandardCharsets.UTF_8);
+        for(String curId : idList) {
+            try {
+//                String curURL = "https://baram.nexon.com/Profile/Info?character=%EC%82%AC%EC%9E%A5%EB%8B%98%40%EC%97%B0";
+                String curURL = "https://baram.nexon.com/Profile/Info?character=" + URLEncoder.encode(curId + "@호동", StandardCharsets.UTF_8);
+                System.out.println("cur:" +curURL);
+                Connection conn = Jsoup.connect(curURL)
+                        .header("Content-Type", "application/json;charset=UTF-8")
+                        .userAgent(agent)
+                        .method(Connection.Method.GET)
+                        .ignoreContentType(true);
 
-        System.out.println("https://baram.nexon.com");
-        Connection conn = Jsoup.connect(baseRankURL + encodedCharInfo)
-                .header("Content-Type", "application/json;charset=UTF-8")
-                .userAgent(USER_AGENT)
-                .method(Connection.Method.GET)
-                .ignoreContentType(true);
+                Document doc = conn.get();
 
 
-        Document document = conn.get();
-
-        System.out.println(document.html());
+                System.out.println(doc.html());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 }
 
