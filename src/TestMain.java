@@ -17,9 +17,7 @@ import java.nio.charset.StandardCharsets;
 public class TestMain {
     public static void main(String[] args) throws Exception {
         CharPageParser charPageParser = new CharPageParser();
-
         CharProperty curProperty = charPageParser.parse("리신장인", "호동");
-
         System.out.println(curProperty);
     }
 }
