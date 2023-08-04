@@ -1,4 +1,6 @@
 
+import kr.kj.baram.character.CharProperty;
+import kr.kj.baram.parser.CharPageParser;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -14,75 +16,11 @@ import java.nio.charset.StandardCharsets;
 
 public class TestMain {
     public static void main(String[] args) throws Exception {
-//        String agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36";
-//        String curURL = "https://baram.nexon.com/Profile/Info?character=" + URLEncoder.encode("검귀" + "@호동", StandardCharsets.UTF_8);
-//        System.out.println("cur:" +curURL);
-//        Connection conn = Jsoup.connect(curURL)
-//                .header("Content-Type", "application/json;charset=UTF-8")
-//                .userAgent(agent)
-//                .method(Connection.Method.GET)
-//                .ignoreContentType(true);
-//
-//        Document doc = conn.get();
+        CharPageParser charPageParser = new CharPageParser();
 
-        JSONParser ps = new JSONParser();
+        CharProperty curProperty = charPageParser.parse("리신장인", "호동");
 
-        Document docFromFile = Jsoup.parse(new File("test_character.html"));
-        Elements scriptTags = docFromFile.select("div.contents > script[type=text/javascript]");
-
-        if (scriptTags.size() == 2) {
-            String scriptCode = scriptTags.get(1).html();
-
-            // JavaScript 변수 A의 값을 가져오기
-            String varAValue = getJavaScriptVariableValue(scriptCode, "_equipItem");
-            if(!varAValue.isEmpty()) {
-                // item이 없을 경우 아예 object가 없다.
-                /*
-                일반
-                목(27)    투구(4)  얼굴(22)
-                무기(1)   갑옷(2)  방패(3)
-                왼손(7)   망토(24) 오른손(8)
-                보조1(20) 신발(26) 보조2(21)
-                노리개(9) 분신(34)
-
-                캐시
-                목(33) 투구(23) 얼굴(30)
-                무기(28) 갑옷(25) 방패(29)
-                X 망토(31) X
-                X 신발(32) X
-                장신구(10) 올레이어(35)
-                 */
-                JSONArray jsonArray = (JSONArray) ps.parse(varAValue);
-                System.out.println("size : " + jsonArray.size());
-            }
-        }
-
-        Element contInfo = docFromFile.selectFirst("div.cont_box > div.inner");
-        if(contInfo != null) {
-            Element findGuild = contInfo.selectFirst("div.tab_menu4 > ul");
-            if(findGuild != null) {
-                Elements liElements = findGuild.select("li > a");
-                // 문파가 있는 경우 => baram.goCharacterInfo('/Profile/GuildInfo','검귀@호동');
-                // 문파가 없는 경우 => alert('가입한 문파가 없습니다.')
-                // 문파
-
-                liElements.get(1).attr("onclick");
-
-            }
-        }
-
-//        Element charArea = docFromFile.selectFirst("div.chr_area ul");
-//        if(charArea != null) {
-//            for(Element li : charArea.select("li")) {
-//                System.out.println(li.selectFirst("strong").text() + " -> " + li.selectFirst("span.system").text());
-//            }
-//        }
-    }
-
-    // JavaScript 변수의 값을 추출하는 메서드
-    public static String getJavaScriptVariableValue(String scriptCode, String variableName) {
-        String pattern = variableName + "\\s*=\\s*(.*?);";
-        return scriptCode.replaceAll("(?s).*?" + pattern + ".*", "$1").trim();
+        System.out.println(curProperty);
     }
 }
 
