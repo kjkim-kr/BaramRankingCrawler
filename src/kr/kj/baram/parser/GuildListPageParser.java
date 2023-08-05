@@ -26,9 +26,11 @@ public class GuildListPageParser {
      * 주어진 서버의 Guild List page를 전부 방문, 길드 목록 전체를 가져온다.
      * @return 모든 길드의 id (고유 id)
      */
-    private List<String> getAllId() {
-        if (this.serverCode == null || this.serverCode.isEmpty())
+    public List<String> getAllId() {
+        if (this.serverCode == null || this.serverCode.isEmpty()) {
+            System.out.println("* serverCode is error");
             return null;
+        }
 
         // https://baram.nexon.com/Guild/List/2?maskGameCode=131074
         String urlFormat = "https://baram.nexon.com/Guild/List/%d?maskGameCode=" + serverCode;
@@ -57,10 +59,12 @@ public class GuildListPageParser {
 
                 // 데이터 없을 경우 종료
                 Element element = curDoc.selectFirst("div.guild_section > div.border_rank_list > table > tbody");
-                if (element == null)
+                if (element == null) {
                     break;
-                if (element.selectFirst("tr.no_data") == null)
+                }
+                if (element.selectFirst("tr.no_data") != null) {
                     break;
+                }
 
                 // 결과 저장
                 for (Element trNameAElement : element.select("tr > td.name > a")) {
@@ -73,8 +77,9 @@ public class GuildListPageParser {
                 }
 
                 // 리스트 사이즈 변동 없으면 바로 종료
-                if (prevListSize == resultList.size())
+                if (prevListSize == resultList.size()) {
                     break;
+                }
 
                 prevListSize = resultList.size();
 
