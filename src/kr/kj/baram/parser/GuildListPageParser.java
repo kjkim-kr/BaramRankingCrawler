@@ -41,6 +41,7 @@ public class GuildListPageParser {
         List<String> resultList = new ArrayList<>();
         // 1 단위로 parsing
         try {
+            int prevListSize = 0;
             while (true) {
                 conn = Jsoup.connect(String.format(urlFormat, startIdx))
                         .header("Content-Type", "application/json;charset=UTF-8")
@@ -70,6 +71,12 @@ public class GuildListPageParser {
                         resultList.add(hrefInfo.substring(30, hrefInfo.indexOf('@')));
                     }
                 }
+
+                // 리스트 사이즈 변동 없으면 바로 종료
+                if (prevListSize == resultList.size())
+                    break;
+
+                prevListSize = resultList.size();
 
                 // 다음 위치로 이동
                 startIdx ++;

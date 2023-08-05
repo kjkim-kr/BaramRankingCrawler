@@ -50,6 +50,7 @@ public class RankPageParser {
 
         // 20 단위로 parsing
         try {
+            int prevListSize = 0;
             while (true) {
                 conn = Jsoup.connect(baseURL + startIdx)
                         .header("Content-Type", "application/json;charset=UTF-8")
@@ -74,6 +75,12 @@ public class RankPageParser {
                 for (Element trGameIdAelement : element.select("tr > td.gameid > a")) {
                     resultList.add(trGameIdAelement.text().trim());
                 }
+
+                // 리스트 사이즈 변동 없으면 바로 종료
+                if (prevListSize == resultList.size())
+                    break;
+
+                prevListSize = resultList.size();
 
                 // 다음 위치로 이동
                 startIdx += 20;
