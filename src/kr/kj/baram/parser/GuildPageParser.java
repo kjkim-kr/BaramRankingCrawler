@@ -52,6 +52,8 @@ public class GuildPageParser {
             List<String> agreeGuildList = getGuildList(guildListElems.get(0));
             List<String> disAgreeGuildList = getGuildList(guildListElems.get(1));
 
+            // 0.5초 휴식
+            Thread.sleep(500);
 
             // member list
             // 페이지 정보가 없을 수도 있음.

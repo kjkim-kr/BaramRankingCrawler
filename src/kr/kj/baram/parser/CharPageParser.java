@@ -66,6 +66,8 @@ public class CharPageParser {
                     curDoc.select("div.contents > script[type=text/javascript]")
             );
 
+            // 0.5초 휴식
+            Thread.sleep(500);
             // 문파 정보 parsing
             // 페이지 정보가 없을 수도 있음.
 
