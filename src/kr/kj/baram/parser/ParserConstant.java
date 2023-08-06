@@ -18,12 +18,12 @@ public class ParserConstant {
     public static final String guildMemberUrl = "https://baram.nexon.com/GuildInfo/Member?clanName=";
 
     public static final Map<String, String> serverCodeMap = Map.ofEntries(
-            Map.entry("연", "131073"),
-            Map.entry("무휼", "131074"),
+            Map.entry("진", "131089"),
             Map.entry("유리", "131086"),
             Map.entry("하자", "131087"),
             Map.entry("호동", "131088"),
-            Map.entry("진", "131089")
+            Map.entry("무휼", "131074"),
+            Map.entry("연", "131073")
     );
 
     //전사 도적 주술사 도사 궁사 천인 마도사 영술사 차사 살수
