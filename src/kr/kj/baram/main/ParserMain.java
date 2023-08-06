@@ -7,6 +7,7 @@ import kr.kj.baram.dao.MysqlModule;
 import kr.kj.baram.guild.GuildProperty;
 import kr.kj.baram.parser.*;
 
+import java.io.PrintWriter;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.*;
@@ -372,6 +373,11 @@ public class ParserMain {
 
 
     public static void parseUserInfo(int numOfWorker) {
+        if (numOfWorker < 1) {
+            System.out.println("Num of worker : " + numOfWorker + " < 1");
+            return;
+        }
+
         MysqlModule mysqlModule = Utils.getNewMysqlModule();
         mysqlModule.connect();
 
@@ -382,6 +388,8 @@ public class ParserMain {
         int totalCount = resList.size();
 
         System.out.println("TotalCount : " + totalCount);     // 20,966
+        if (totalCount == 0)
+            return ;
 
         // 20개의 worker 생산
         long st = System.currentTimeMillis();
@@ -539,7 +547,9 @@ public class ParserMain {
 
                     System.out.println("\tWorker " + workerNumber + " works loopCnt = " + loopCnt
                             + " affected user/update = (" + affectedUsers + ", " + affectedUpdates + ") "
-                            + " ela: " + (System.currentTimeMillis() - loopSt)/1000.0);
+                            + " ela: " + (System.currentTimeMillis() - loopSt)/1000.0
+                            + " - at " + Utils.getCurrentTime()
+                    );
                     loopSt = System.currentTimeMillis();
                 }
             }
@@ -564,10 +574,10 @@ public class ParserMain {
     }
 
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception{
 //        getAllUsers();
 //        parseGuildInfo(10);
 
-        parseUserInfo(30);
+//          parseUserInfo(1);
     }
 }

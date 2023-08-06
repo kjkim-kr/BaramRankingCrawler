@@ -3,6 +3,7 @@ package kr.kj.baram.parser;
 import kr.kj.baram.character.CharConstant;
 import kr.kj.baram.character.CharProperty;
 import kr.kj.baram.character.ItemProperty;
+import kr.kj.baram.main.Utils;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -13,6 +14,8 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
+import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -40,68 +43,78 @@ public class CharPageParser {
         if (myServer == null || myServer.isEmpty()) return null;
 
         try {
-            String encodedIdServer = URLEncoder.encode(myId + "@" + myServer, StandardCharsets.UTF_8);
+            try {
+                String encodedIdServer = URLEncoder.encode(myId + "@" + myServer, StandardCharsets.UTF_8);
 
-            Connection conn;
-            Document curDoc;
-            charProperty = new CharProperty();
+                Connection conn;
+                Document curDoc;
+                charProperty = new CharProperty();
 
-            // 기본 정보 parsing
-            // 페이지 정보가 없을 수도 있음.
-            conn = Jsoup.connect(ParserConstant.charInfoUrl + encodedIdServer)
-                    .header("Content-Type", "application/json;charset=UTF-8")
-                    .userAgent(ParserConstant.agent)
-                    .method(Connection.Method.GET)
-                    .ignoreContentType(true);
+                // 기본 정보 parsing
+                // 페이지 정보가 없을 수도 있음.
+                conn = Jsoup.connect(ParserConstant.charInfoUrl + encodedIdServer)
+                        .header("Content-Type", "application/json;charset=UTF-8")
+                        .userAgent(ParserConstant.agent)
+                        .method(Connection.Method.GET)
+                        .ignoreContentType(true);
 
-            curDoc = conn.get();
-            if (isErrorPage(curDoc)) return null;
+                curDoc = conn.get();
+                if (isErrorPage(curDoc)) return null;
 
-            Element charArea = curDoc.selectFirst("div.chr_area ul");
-            if (charArea == null)
-                return null;
+                Element charArea = curDoc.selectFirst("div.chr_area ul");
+                if (charArea == null)
+                    return null;
 
-            HashMap<String, String> baseMap = getCharacterInfo(charArea);
-            List<ItemProperty> itemPropertyList = getItemList(
-                    curDoc.select("div.contents > script[type=text/javascript]")
-            );
+                HashMap<String, String> baseMap = getCharacterInfo(charArea);
+                List<ItemProperty> itemPropertyList = getItemList(
+                        curDoc.select("div.contents > script[type=text/javascript]")
+                );
 
-            // 0.5초 휴식
-            Thread.sleep(500);
-            // 문파 정보 parsing
-            // 페이지 정보가 없을 수도 있음.
+                // 0.5초 휴식
+                Thread.sleep(500);
+                // 문파 정보 parsing
+                // 페이지 정보가 없을 수도 있음.
 
-            conn = Jsoup.connect(ParserConstant.charGuildInfoUrl + encodedIdServer)
-                    .header("Content-Type", "application/json;charset=UTF-8")
-                    .userAgent(ParserConstant.agent)
-                    .method(Connection.Method.GET)
-                    .ignoreContentType(true);
+                conn = Jsoup.connect(ParserConstant.charGuildInfoUrl + encodedIdServer)
+                        .header("Content-Type", "application/json;charset=UTF-8")
+                        .userAgent(ParserConstant.agent)
+                        .method(Connection.Method.GET)
+                        .ignoreContentType(true);
 
-            curDoc = conn.get();
+                curDoc = conn.get();
 
-            String guildName = "";
-            if (!isErrorPage(curDoc)) {
-                Elements ddElems = curDoc.select("dl.guild_info > dd");
-                if (ddElems.size() > 1) {
-                    String guildFullName = ddElems.get(1).text();   // XXYYZZ@호동
-                    int atIndex = guildFullName.indexOf('@');
-                    // If '@' is not present, take the whole text.
-                    guildName = (atIndex != -1) ? guildFullName.substring(0, atIndex) : guildFullName;
+                String guildName = "";
+                if (!isErrorPage(curDoc)) {
+                    Elements ddElems = curDoc.select("dl.guild_info > dd");
+                    if (ddElems.size() > 1) {
+                        String guildFullName = ddElems.get(1).text();   // XXYYZZ@호동
+                        int atIndex = guildFullName.indexOf('@');
+                        // If '@' is not present, take the whole text.
+                        guildName = (atIndex != -1) ? guildFullName.substring(0, atIndex) : guildFullName;
+                    }
                 }
-            }
 
-            // 데이터 설정
-            charProperty.setMyName(myId)
-                    .setMyServer(myServer)
-                    .setLevel(Integer.parseInt(baseMap.get("레벨")))
-                    .setRanking(Integer.parseInt(baseMap.get("랭킹")))
-                    .setPromotion(Integer.parseInt(baseMap.get("승급차수")))
-                    .setJob(baseMap.get("직업"))
-                    .setCountry(baseMap.get("국가"))
-                    .setCoupleNameServer(baseMap.get("부부"))
-                    .setEquipItem(itemPropertyList)
-                    .setGuildName(guildName)
-            ;
+                // 데이터 설정
+                charProperty.setMyName(myId)
+                        .setMyServer(myServer)
+                        .setLevel(Integer.parseInt(baseMap.get("레벨")))
+                        .setRanking(Integer.parseInt(baseMap.get("랭킹")))
+                        .setPromotion(Integer.parseInt(baseMap.get("승급차수")))
+                        .setJob(baseMap.get("직업"))
+                        .setCountry(baseMap.get("국가"))
+                        .setCoupleNameServer(baseMap.get("부부"))
+                        .setEquipItem(itemPropertyList)
+                        .setGuildName(guildName)
+                ;
+            }
+            catch (SocketTimeoutException socketTimeoutException) {
+                System.out.println("Socket TimeOut : " + Utils.getCurrentTime());
+                return null;
+            }
+            catch(IOException socketTimeoutException) {
+                socketTimeoutException.printStackTrace();
+                return null;
+            }
         } catch (Exception e) {
             e.printStackTrace();
             return null;
