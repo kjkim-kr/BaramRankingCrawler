@@ -1,18 +1,16 @@
 package kr.kj.baram.main;
 
+import kr.kj.baram.character.CharConstant;
+import kr.kj.baram.character.CharProperty;
+import kr.kj.baram.character.ItemProperty;
 import kr.kj.baram.dao.MysqlModule;
 import kr.kj.baram.guild.GuildProperty;
-import kr.kj.baram.parser.GuildListPageParser;
-import kr.kj.baram.parser.GuildPageParser;
-import kr.kj.baram.parser.ParserConstant;
-import kr.kj.baram.parser.RankPageParser;
+import kr.kj.baram.parser.*;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class ParserMain {
     // user id 수집기
@@ -326,7 +324,8 @@ public class ParserMain {
                     for (String guildMemberNameServer : guildProperty.memberNameServerList) {
                         guildMemberPs.setString(1, curGuildName);
                         guildMemberPs.setString(2, curGuildServer);
-                        guildMemberPs.setString(3, guildMemberNameServer);
+                        guildMemberPs.setString(3,
+                                guildMemberNameServer.substring(0, guildMemberNameServer.indexOf('@'))); // @ 제거
 
                         guildMemberPs.addBatch();
                     }
@@ -344,6 +343,8 @@ public class ParserMain {
                     guildInfoPs.executeBatch();
                     guildRelPs.executeBatch();
                     guildMemberPs.executeBatch();
+
+                    mysqlModule.getConn().commit();
                 }
             }
 
@@ -370,10 +371,203 @@ public class ParserMain {
     }
 
 
+    public static void parseUserInfo(int numOfWorker) {
+        MysqlModule mysqlModule = Utils.getNewMysqlModule();
+        mysqlModule.connect();
+
+        ArrayList<String> resList;
+        resList = mysqlModule.runQuery(
+                "select user_id, user_server from target_user_list where used = 0"
+        );
+        int totalCount = resList.size();
+
+        System.out.println("TotalCount : " + totalCount);     // 20,966
+
+        // 20개의 worker 생산
+        long st = System.currentTimeMillis();
+        System.out.println("작업 시작 : " + Utils.getCurrentTime());
+        List<Thread> threadPool = new ArrayList<>();
+
+        int listPerSize = 1 + totalCount / numOfWorker;
+        for (int workerNum = 0; workerNum < numOfWorker; workerNum++) {
+            int sidx = workerNum * listPerSize;
+            int eidx = Math.min(sidx + listPerSize, totalCount);
+            int curWorkerNum = workerNum;
+            List<String> curList = resList.subList(sidx, eidx);
+
+            Thread curWorkerThread = new Thread(
+                    () -> generateUserInfo(curList, curWorkerNum)
+            );
+
+            curWorkerThread.start();
+            threadPool.add(curWorkerThread);
+        }
+
+        for (Thread curThread : threadPool) {
+            try {
+                curThread.join();
+            } catch (InterruptedException interruptedException) {
+                interruptedException.printStackTrace();
+            }
+        }
+        System.out.println("작업 종료 : " + Utils.getCurrentTime());
+        System.out.println("소요 시간 : " + (System.currentTimeMillis() - st) / 1000.0);
+
+        mysqlModule.close();
+    }
+
+
+    public static void generateUserInfo(List<String> targetUserList, int workerNumber) {
+        MysqlModule mysqlModule = Utils.getNewMysqlModule();
+        mysqlModule.connect();
+
+        CharPageParser charPageParser = new CharPageParser();
+
+        String updateTargetGuildQuery = """
+                update target_user_list
+                set used = 1, succeed = ?
+                where user_id = ? and user_server = ?
+                """;
+        String usersQuery = mysqlModule.getBaseInsertQuery("users");
+
+        long st = System.currentTimeMillis();
+        System.out.println("* Worker " + workerNumber + " starts with data = " + targetUserList.size());
+        System.out.println(" - at " + Utils.getCurrentTime());
+
+        // 일반 아이템 설정 순서;
+        // 목, 머리, 얼굴, 무기, 갑옷, 방패, 왼손, 망토, 오른손, 보조1, 신발, 보조2, 장신구, 분신 순
+        List<CharConstant.ITEMCODE> normalOrderList = List.of(
+                CharConstant.ITEMCODE.NORMAL_NECK,
+                CharConstant.ITEMCODE.NORMAL_HELMET,
+                CharConstant.ITEMCODE.NORMAL_FACE,
+                CharConstant.ITEMCODE.NORMAL_WEAPON,
+                CharConstant.ITEMCODE.NORMAL_ARMOR,
+                CharConstant.ITEMCODE.NORMAL_SHIELD,
+                CharConstant.ITEMCODE.NORMAL_LEFT,
+                CharConstant.ITEMCODE.NORMAL_CAPE,
+                CharConstant.ITEMCODE.NORMAL_RIGHT,
+                CharConstant.ITEMCODE.NORMAL_LSUB,
+                CharConstant.ITEMCODE.NORMAL_SHOES,
+                CharConstant.ITEMCODE.NORMAL_RSUB,
+                CharConstant.ITEMCODE.NORMAL_JEWEL,
+                CharConstant.ITEMCODE.NORMAL_AVATAR
+        );
+        // 캐시 아이템 설정 순서;
+        // 목, 머리, 얼굴, 무기, 갑옷, 방패, 왼손, 망토, 오른손, 보조1, 신발, 보조2, 장신구, 분신 순
+        List<CharConstant.ITEMCODE> cashOrderList = List.of(
+                CharConstant.ITEMCODE.CASH_NECK,
+                CharConstant.ITEMCODE.CASH_HELMET,
+                CharConstant.ITEMCODE.CASH_FACE,
+                CharConstant.ITEMCODE.CASH_WEAPON,
+                CharConstant.ITEMCODE.CASH_ARMOR,
+                CharConstant.ITEMCODE.CASH_SHIELD,
+                CharConstant.ITEMCODE.CASH_CAPE,
+                CharConstant.ITEMCODE.CASH_SHOES,
+                CharConstant.ITEMCODE.CASH_JEWEL,
+                CharConstant.ITEMCODE.CASH_AVATAR
+        );
+
+        try {
+            mysqlModule.getConn().setAutoCommit(false);
+
+            PreparedStatement updatePs = mysqlModule.getConn().prepareStatement(updateTargetGuildQuery);
+            PreparedStatement usersPs = mysqlModule.getConn().prepareStatement(usersQuery);
+
+            int loopCnt = 0;
+            long loopSt = System.currentTimeMillis();
+            for (String userInfoData : targetUserList) {
+                // guild_id, guild_server
+                String[] userInfo = userInfoData.split(mysqlModule.getBaseSplitChar());
+                int succeed = 0;
+
+                CharProperty charProperty = charPageParser.parse(userInfo[0], userInfo[1]);
+                if (charProperty != null) {
+                    succeed = 1;
+
+                    // 데이터 삽입
+                    int parameterIndexUsersPs = 0;
+
+                    usersPs.setString(++parameterIndexUsersPs, charProperty.myName);
+                    usersPs.setString(++parameterIndexUsersPs, charProperty.myServer);
+                    usersPs.setInt(++parameterIndexUsersPs, charProperty.level);
+                    usersPs.setInt(++parameterIndexUsersPs, charProperty.ranking);
+                    usersPs.setInt(++parameterIndexUsersPs, charProperty.promotion);
+                    usersPs.setString(++parameterIndexUsersPs, charProperty.job);
+                    usersPs.setString(++parameterIndexUsersPs, charProperty.country);
+                    usersPs.setString(++parameterIndexUsersPs, charProperty.coupleNameServer);
+                    usersPs.setString(++parameterIndexUsersPs, charProperty.guildName);
+
+                    // item 설정
+                    // map 으로 변환
+                    HashMap<CharConstant.ITEMCODE, String> curItemMap;
+                    curItemMap = charProperty.equipItem.stream()
+                            .collect(Collectors.toMap(
+                                    item -> item.itemCode,
+                                    item -> item.itemName,
+                                    (existing, replacement) -> existing,
+                                    HashMap::new)
+                            );
+
+                    // 일반 아이템 설정
+                    for(CharConstant.ITEMCODE curCode : normalOrderList) {
+                        usersPs.setString(++parameterIndexUsersPs,
+                                curItemMap.getOrDefault(curCode, ""));
+                    }
+
+                    // 캐시 아이템 설정
+                    for(CharConstant.ITEMCODE curCode : cashOrderList) {
+                        usersPs.setString(++parameterIndexUsersPs,
+                                curItemMap.getOrDefault(curCode, ""));
+                    }
+
+                    usersPs.addBatch();
+                }
+
+                // 사용/성공 유무 처리
+                updatePs.setInt(1, succeed);
+                updatePs.setString(2, userInfo[0]);
+                updatePs.setString(3, userInfo[1]);
+                updatePs.addBatch();
+
+                // batch 실행
+                if (++loopCnt % 1000 == 0) {
+                    int affectedUpdates = Arrays.stream(updatePs.executeBatch()).sum();
+                    int affectedUsers = Arrays.stream(usersPs.executeBatch()).sum();
+
+                    // 수동 commit을 한다
+                    mysqlModule.getConn().commit();
+
+                    System.out.println("\tWorker " + workerNumber + " works loopCnt = " + loopCnt
+                            + " affected user/update = (" + affectedUsers + ", " + affectedUpdates + ") "
+                            + " ela: " + (System.currentTimeMillis() - loopSt)/1000.0);
+                    loopSt = System.currentTimeMillis();
+                }
+            }
+
+            // 남은 batch 처리
+            updatePs.executeBatch();
+            usersPs.executeBatch();
+
+            // 종료
+            updatePs.close();
+            usersPs.close();
+
+            mysqlModule.getConn().setAutoCommit(true);
+        } catch (SQLException sqlException) {
+            sqlException.printStackTrace();
+        }
+
+        mysqlModule.close();
+
+        System.out.println("* Worker " + workerNumber + " ends - at " + Utils.getCurrentTime());
+        System.out.println("\tElapsed Time : " + (System.currentTimeMillis() - st)/1000.0);
+    }
+
+
     public static void main(String[] args) {
 //        getAllUsers();
-
 //        parseGuildInfo(10);
 
+        parseUserInfo(30);
     }
 }
