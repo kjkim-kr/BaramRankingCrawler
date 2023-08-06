@@ -1,7 +1,9 @@
 package kr.kj.baram.main;
 
 import kr.kj.baram.dao.MysqlModule;
+import kr.kj.baram.guild.GuildProperty;
 import kr.kj.baram.parser.GuildListPageParser;
+import kr.kj.baram.parser.GuildPageParser;
 import kr.kj.baram.parser.ParserConstant;
 import kr.kj.baram.parser.RankPageParser;
 
@@ -199,7 +201,179 @@ public class ParserMain {
         mysqlModule.close();
     }
 
+
+    public static void parseGuildInfo(int numOfWorker) {
+        MysqlModule mysqlModule = Utils.getNewMysqlModule();
+        mysqlModule.connect();
+
+        ArrayList<String> resList;
+        resList = mysqlModule.runQuery(
+                "select guild_id, guild_server from target_guild_list where used = 0"
+        );
+        int totalCount = resList.size();
+
+        System.out.println("TotalCount : " + totalCount);     // 20,966
+
+        // 20개의 worker 생산
+        long st = System.currentTimeMillis();
+        System.out.println("작업 시작 : " + Utils.getCurrentTime());
+        List<Thread> threadPool = new ArrayList<>();
+
+        int listPerSize = 1 + totalCount / numOfWorker;
+        for (int workerNum = 0; workerNum < numOfWorker; workerNum++) {
+            int sidx = workerNum * listPerSize;
+            int eidx = Math.min(sidx + listPerSize, totalCount);
+            int curWorkerNum = workerNum;
+            List<String> curList = resList.subList(sidx, eidx);
+
+            Thread curWorkerThread = new Thread(
+                    () -> generateGuildInfo(curList, curWorkerNum)
+            );
+
+            curWorkerThread.start();
+            threadPool.add(curWorkerThread);
+        }
+
+        for (Thread curThread : threadPool) {
+            try {
+                curThread.join();
+            } catch (InterruptedException interruptedException) {
+                interruptedException.printStackTrace();
+            }
+        }
+        System.out.println("작업 종료 : " + Utils.getCurrentTime());
+        System.out.println("소요 시간 : " + (System.currentTimeMillis() - st) / 1000.0);
+
+        mysqlModule.close();
+    }
+
+    public static void generateGuildInfo(List<String> targetGuildList, int workerNumber) {
+        MysqlModule mysqlModule = Utils.getNewMysqlModule();
+        mysqlModule.connect();
+
+        GuildPageParser guildPageParser = new GuildPageParser();
+
+        String updateTargetGuildQuery = """
+                update target_guild_list
+                set used = 1, succeed = ?
+                where guild_id = ? and guild_server = ?
+                """;
+
+        String guildInfoQuery = mysqlModule.getBaseInsertQuery("guild_infos");
+        String guildRelationQuery = mysqlModule.getBaseInsertQuery("guild_relation");
+        String guildMemberQuery = mysqlModule.getBaseInsertQuery("guild_members");
+
+        long st = System.currentTimeMillis();
+        System.out.println("* Worker " + workerNumber + " starts with data = " + targetGuildList.size());
+        System.out.println(" - at " + Utils.getCurrentTime());
+
+        try {
+            mysqlModule.getConn().setAutoCommit(false);
+
+            PreparedStatement updatePs = mysqlModule.getConn().prepareStatement(updateTargetGuildQuery);
+            PreparedStatement guildInfoPs = mysqlModule.getConn().prepareStatement(guildInfoQuery);
+            PreparedStatement guildRelPs = mysqlModule.getConn().prepareStatement(guildRelationQuery);
+            PreparedStatement guildMemberPs = mysqlModule.getConn().prepareStatement(guildMemberQuery);
+
+            int loopCnt = 0;
+            for (String guildInfoData : targetGuildList) {
+                // guild_id, guild_server
+                String[] guildInfo = guildInfoData.split(mysqlModule.getBaseSplitChar());
+                int succeed = 0;
+
+                GuildProperty guildProperty = guildPageParser.parse(guildInfo[0], guildInfo[1]);
+                if (guildProperty != null) {
+                    succeed = 1;
+
+                    // guild info 데이터 설정
+                    String curGuildNameServer = guildProperty.guildNameServer; // 낙원@호동
+                    String curGuildName = curGuildNameServer.substring(0, curGuildNameServer.indexOf('@'));
+                    String curGuildServer = curGuildNameServer.substring(1 + curGuildNameServer.indexOf('@'));
+
+                    guildInfoPs.setString(1, curGuildName);
+                    guildInfoPs.setString(2, curGuildServer);
+                    guildInfoPs.setString(3, guildProperty.guildNameCode);
+                    guildInfoPs.setString(4, guildProperty.guildServerCode);
+                    guildInfoPs.setString(5, guildProperty.castleName);
+                    guildInfoPs.setString(6, guildProperty.leaderNameServer);
+                    guildInfoPs.setString(7, guildProperty.subLeaderNameServer);
+
+                    guildInfoPs.addBatch();
+
+                    // guild relation 데이터 설정
+                    for (String agreeGuildNameServer : guildProperty.agreeGuildNameServerList) {
+                        guildRelPs.setString(1, curGuildServer);
+                        guildRelPs.setString(2, curGuildName);
+                        guildRelPs.setString(3,
+                                agreeGuildNameServer.substring(0, agreeGuildNameServer.indexOf('@')));
+                        guildRelPs.setInt(4, 0); // 동맹:0
+
+                        guildRelPs.addBatch();
+                    }
+
+                    // guild relation 데이터 설정
+                    for (String disAgreeGuildNameServer : guildProperty.disAgreeGuildNameServerList) {
+                        guildRelPs.setString(1, curGuildServer);
+                        guildRelPs.setString(2, curGuildName);
+                        guildRelPs.setString(3,
+                                disAgreeGuildNameServer.substring(0, disAgreeGuildNameServer.indexOf('@')));
+                        guildRelPs.setInt(4, 1); // 적문:1
+
+                        guildRelPs.addBatch();
+                    }
+
+                    // guild member 데이터 설정
+                    for (String guildMemberNameServer : guildProperty.memberNameServerList) {
+                        guildMemberPs.setString(1, curGuildName);
+                        guildMemberPs.setString(2, curGuildServer);
+                        guildMemberPs.setString(3, guildMemberNameServer);
+
+                        guildMemberPs.addBatch();
+                    }
+                }
+
+                // 사용/성공 유무 처리
+                updatePs.setInt(1, succeed);
+                updatePs.setString(2, guildInfo[0]);
+                updatePs.setString(3, guildInfo[1]);
+                updatePs.addBatch();
+
+                // batch 실행
+                if (++loopCnt % 1000 == 0) {
+                    updatePs.executeBatch();
+                    guildInfoPs.executeBatch();
+                    guildRelPs.executeBatch();
+                    guildMemberPs.executeBatch();
+                }
+            }
+
+            // 남은 batch 처리
+            updatePs.executeBatch();
+            guildInfoPs.executeBatch();
+            guildRelPs.executeBatch();
+            guildMemberPs.executeBatch();
+
+            // 종료
+            updatePs.close();
+            guildInfoPs.close();
+            guildRelPs.close();
+            guildMemberPs.close();
+            mysqlModule.getConn().setAutoCommit(true);
+        } catch (SQLException sqlException) {
+            sqlException.printStackTrace();
+        }
+
+        mysqlModule.close();
+
+        System.out.println("* Worker " + workerNumber + " ends - at " + Utils.getCurrentTime());
+        System.out.println("\tElapsed Time : " + (System.currentTimeMillis() - st)/1000.0);
+    }
+
+
     public static void main(String[] args) {
 //        getAllUsers();
+
+//        parseGuildInfo(10);
+
     }
 }

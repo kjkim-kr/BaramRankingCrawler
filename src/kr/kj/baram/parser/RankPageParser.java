@@ -6,6 +6,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 
+import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
@@ -60,6 +61,7 @@ public class RankPageParser {
         try {
             int prevListSize = 0;
             int currentRetryCount = 0, totalRetryCount = 10;
+            int loopCount = 0;
 
             // 최대 100,000 위 까지 존재한다.
             // 6차 이상만 수집하는 걸로 변경
@@ -72,7 +74,7 @@ public class RankPageParser {
                         .method(Connection.Method.GET)
                         .ignoreContentType(true);
 
-                if (startIdx % 1000 == 0) {
+                if (loopCount % 50 == 0) {
                     System.out.printf("\t(%s/%s) idx : %d (ela:%f) at %s\n",
                             serverName, className, startIdx,
                             (System.currentTimeMillis() - st) / 1000.0, Utils.getCurrentTime());
@@ -120,6 +122,7 @@ public class RankPageParser {
 
                     // 다음 위치로 이동
                     startIdx += 20;
+                    loopCount += 1;
 
                     // 1 ~ 2초 랜덤 휴식
                     try {
@@ -129,6 +132,23 @@ public class RankPageParser {
                     }
                 } catch(SocketTimeoutException socketTimeoutException) {
                     System.out.println("\tTimeOut 발생 : " + baseURL + startIdx);
+                    currentRetryCount += 1;
+
+                    if (currentRetryCount > totalRetryCount) {
+                        System.out.println("\t\tRetry 횟수 초과로 종료");
+                        break;
+                    }
+
+                    // 60초 대기
+                    try {
+                        Thread.sleep(60000 + 10 * tRand.nextInt(100));
+                    }catch (InterruptedException interruptedException) {
+                        interruptedException.printStackTrace();
+                    }
+                } catch (IOException ioException) {
+                    ioException.printStackTrace();
+
+                    System.out.println("\tIoException 발생 : " + baseURL + startIdx);
                     currentRetryCount += 1;
 
                     if (currentRetryCount > totalRetryCount) {
